@@ -1,100 +1,140 @@
 'use strict';
 
-var MongoClient = require('./node_modules/mongodb').MongoClient;
+var MongoClient = require('mongodb').MongoClient;
 
-// доступные операции: подключение к монге, выбор коллекции, формирование запроса, получение
-// результата
-
-function createQuery(param, value, operator) {
-    return "this." + param + " " + operator + " '" + value + "'";
+function negate(value) {
+    switch (value) {
+        case '$lt':
+            return '$gte';
+        case '$gt':
+            return '$lte';
+        case '$eq':
+            return '$ne';
+        case '$in':
+            return '$nin';
+    }
 }
 
-var multivarka = function () {
+function simpleQuery(param, func, value) {
+    var obj = {};
+    obj[func] = value;
+    
+    var result = {};
+    result[param] = obj;
+
+    return result;
+}
+
+function multivarka() {
+    if (!(this instanceof multivarka)) {
+        return new multivarka();
+    }
     this.myServer = null;
-    this.queryParam = null;
     this.collectionName = null;
-    this.negation = false;
-    this.queryText = '';
+    this.counter = -1;
+    this.params = [];
+    this.functions = [];
+    this.negations = [];
+    this.values = [];
+}
+
+multivarka.prototype.clear = function () {
+    this.counter = -1;
+    this.params = [];
+    this.functions = [];
+    this.negations = [];
+    this.values = [];
+};
+
+multivarka.prototype.createQuery = function () {
+    var result = {};
+    if (this.counter === -1) {
+    } else if (this.counter === 0) {
+        var func;
+        if (this.negations[0]) {
+            func = negate(this.functions[0]);
+        } else {
+            func = this.functions[0];
+        }
+        result = simpleQuery(this.params[0], func, this.values[0]);
+    } else {
+        result = {$and : []};
+        for (let i = 0; i <= this.counter; i++) {
+            var func;
+            if (this.negations[i]) {
+                func = negate(this.functions[i]);
+            } else {
+                func = this.functions[i];
+            }
+            result['$and'].push(simpleQuery(this.params[i], func, this.values[i]))
+        }
+    }
+    return result;
 };
 
 multivarka.prototype.server = function (serverName) {
     this.myServer = MongoClient.connect(serverName);
-    return this;
-};
 
-multivarka.prototype.where = function (data) {
-    this.queryParam = data;
     return this;
 };
 
 multivarka.prototype.collection = function (collectionName) {
+    this.clear();
     this.collectionName = collectionName;
+
+    return this;
+};
+
+multivarka.prototype.where = function (data) {
+    this.counter++;
+    this.params.push(data);
+
     return this;
 };
 
 multivarka.prototype.equal = function (paramValue) {
-    if (this.negation) {
-        this.negation = false;
-        this.queryText = createQuery(this.queryParam, paramValue, '!=');
-    } else {
-        this.queryText = createQuery(this.queryParam, paramValue, '==');
-    }
+    this.values.push(paramValue);
+    this.functions.push('$eq');
+
     return this;
 };
 
 multivarka.prototype.lessThan = function (paramValue) {
-    if (this.negation) {
-        this.negation = false;
-        this.queryText = createQuery(this.queryParam, paramValue, '>=');
-    } else {
-        this.queryText = createQuery(this.queryParam, paramValue, '<');
-    }
+    this.values.push(paramValue);
+    this.functions.push('$lt');
+
     return this;
 };
 
 multivarka.prototype.greatThan = function (paramValue) {
-    if (this.negation) {
-        this.negation = false;
-        this.queryText = createQuery(this.queryParam, paramValue, '<=');
-    } else {
-        this.queryText = createQuery(this.queryParam, paramValue, '>');
-    }
+    this.values.push(paramValue);
+    this.functions.push('$gt');
+
     return this;
 };
 
 multivarka.prototype.not = function () {
-    this.negation = true;
+    this.negations[this.counter] = true;
+
     return this;
 };
 
 multivarka.prototype.include = function (array) {
+    this.functions.push('$in');
     if (!Array.prototype.isPrototypeOf(array)) {
         array = [array];
     }
-    array.forEach((item, i) => {
-        if (this.negation) {
-            this.queryText += createQuery(this.queryParam, item, '!=');
-            if (i < array.length - 1) {
-                this.queryText += " && ";
-            } else {
-                this.negation = false;
-            }
-        } else {
-            this.queryText += createQuery(this.queryParam, item, '==');
-            if (i < array.length - 1) {
-                this.queryText += " || ";
-            }
-        }
-    });
+    this.values.push(array);
+
     return this;
 };
 
 multivarka.prototype.find = function () {
-    var text = this.queryText;
+    var query = this.createQuery();
+
     return this.myServer.then((db) => {
-        return db.collection(this.collectionName).find({
-            $where: text
-        }, { _id: 0 }).toArray().then(function (data) {
+        return db.collection(this.collectionName).find(query,
+            { _id: 0 }).toArray().then(function (data) {
             db.close();
             return Promise.resolve(data);
         });
