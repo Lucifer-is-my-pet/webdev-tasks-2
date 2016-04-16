@@ -6,7 +6,7 @@ multivarka
     .where('group').not().include(['ФИИТ-301', 'ПИ-401'])
     .find().then(function (data) {
         console.log(data);
-        console.log('не в \'ФИИТ-301\', \'ПИ-401\' ---------');
+        console.log('---------');
     }).catch(function (err) {
         console.error(err);
     });
