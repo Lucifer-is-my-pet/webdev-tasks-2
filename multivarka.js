@@ -18,7 +18,7 @@ function negate(value) {
 function simpleQuery(param, func, value) {
     var obj = {};
     obj[func] = value;
-    
+
     var result = {};
     result[param] = obj;
 
@@ -31,14 +31,10 @@ function multivarka() {
     }
     this.myServer = null;
     this.collectionName = null;
-    this.counter = -1;
-    this.params = [];
-    this.functions = [];
-    this.negations = [];
-    this.values = [];
+    this.init();
 }
 
-multivarka.prototype.clear = function () {
+multivarka.prototype.init = function () {
     this.counter = -1;
     this.params = [];
     this.functions = [];
@@ -48,27 +44,31 @@ multivarka.prototype.clear = function () {
 
 multivarka.prototype.createQuery = function () {
     var result = {};
-    if (this.counter === -1) {
-    } else if (this.counter === 0) {
+    if (this.counter === 0) {
         var func;
+
         if (this.negations[0]) {
             func = negate(this.functions[0]);
         } else {
             func = this.functions[0];
         }
+
         result = simpleQuery(this.params[0], func, this.values[0]);
-    } else {
+    } else if (this.counter > 0) {
         result = {$and : []};
         for (let i = 0; i <= this.counter; i++) {
             var func;
+
             if (this.negations[i]) {
                 func = negate(this.functions[i]);
             } else {
                 func = this.functions[i];
             }
+
             result['$and'].push(simpleQuery(this.params[i], func, this.values[i]))
         }
     }
+
     return result;
 };
 
@@ -79,7 +79,7 @@ multivarka.prototype.server = function (serverName) {
 };
 
 multivarka.prototype.collection = function (collectionName) {
-    this.clear();
+    this.init();
     this.collectionName = collectionName;
 
     return this;
@@ -121,6 +121,7 @@ multivarka.prototype.not = function () {
 
 multivarka.prototype.include = function (array) {
     this.functions.push('$in');
+    
     if (!Array.prototype.isPrototypeOf(array)) {
         array = [array];
     }
